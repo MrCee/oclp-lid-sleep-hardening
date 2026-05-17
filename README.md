@@ -1,4 +1,4 @@
-# 💤 OCLP Lid Sleep Hardening
+# 💤 OCLP Lid Sleep Diagnostic & Hardening
 
 <p align="left">
   <img alt="License MIT" src="https://img.shields.io/badge/License-MIT-gold?style=for-the-badge">
@@ -8,11 +8,11 @@
   <img alt="Target Intel MacBooks" src="https://img.shields.io/badge/Target-Intel%20MacBooks-lightgrey?style=for-the-badge">
 </p>
 
-Battery-focused lid sleep hardening for unsupported MacBook installs running via **OpenCore Legacy Patcher**.
+Sleep diagnostics and optional hardening for unsupported MacBook installs running via **OpenCore Legacy Patcher**.
 
-This project was created after diagnosing an older MacBook Pro where macOS kept waking, dark-waking, or draining battery after the lid was closed.
+This project was created after diagnosing an older MacBook Pro where macOS kept waking, dark-waking, or draining battery after the lid was closed. It is not a universal fix. It gives you a repeatable report, a focused EC/lid diagnostic mode, and conservative hardening modes you can apply or restore.
 
-The fix is intentionally practical: it applies a stricter battery sleep profile, quietens common wake triggers, and gives you a repeatable audit path for finding apps or Apple background services that are currently blocking sleep.
+This is **not** an official OpenCore Legacy Patcher project.
 
 ---
 
@@ -25,33 +25,69 @@ Common symptoms:
 - 🔋 Battery drains while the lid is closed
 - 🌙 Repeated `DarkWake` events
 - 💻 The Mac wakes shortly after lid close
-- 🧲 Wake reasons such as `EC.PME/User`, `EC.LidOpen`, `UserActivity`, or `XHC1`
-- ⌨️ Keyboard, trackpad, lid, ACPI, or Bluetooth wake events
+- 🧲 Wake reasons such as `EC.ACAttach`, `EC.ACDetach`, `EC.LidOpen`, `EC.PME/User`, `UserActivity`, or `XHC1`
+- ⌨️ Keyboard, trackpad, lid, ACPI, USB, or Bluetooth wake events
 - 🧵 App-level blockers such as Excel, Contacts sync, iCloud sync, or Apple account services
 - 🛑 `PreventUserIdleSystemSleep` assertions that rotate between apps and system services
 
-This is **not** an official OpenCore Legacy Patcher project.
-
-It is a field-tested hardening script for people who prefer battery preservation over instant wake convenience.
-
 ---
 
-## 🧪 Tested scenario
+## 🧪 Observed scenario
 
 | Item | Value |
 |---|---|
 | Mac | MacBook Pro 11,3 |
 | Install type | Unsupported macOS via OCLP |
 | Problem | Lid-closed battery drain / repeated wake |
-| Observed blockers during diagnosis | Excel, AddressBookSourceSync, cloudd, akd |
-| Observed wake style | EC / lid / user input / embedded controller wake |
-| Goal | Force aggressive battery-preserving sleep |
+| Observed blockers during diagnosis | Excel, AddressBookSourceSync, cloudd, akd, identityservicesd |
+| Observed wake style | Phantom EC/SMC AC attach/detach, lid/input/user activity wake |
+| Goal | Diagnose the wake path and optionally harden both battery and AC profiles |
+
+On this MacBookPro11,3, the battery pmset profile was correctly applied, including `lidwake 0`, `hibernatemode 25`, immediate standby delays, and disabled network wake options. The machine still woke while physically on battery.
+
+The important log pattern was phantom power-state activity:
+
+```text
+DarkWake from Safe Sleep due to EC.ACDetach/Maintenance Using BATT
+Wake from Standby due to EC.ACAttach/Maintenance Using BATT
+Wake from Standby due to EC.ACAttach/Maintenance Using AC
+```
+
+Because macOS may route wake behaviour through AC paths after an `EC.ACAttach` event, hardening only the battery profile may not be enough on this machine.
 
 ---
 
-## ⚙️ What the script changes
+## ⚙️ Modes
 
-On **battery power**, the script applies an aggressive deep-sleep profile:
+```zsh
+chmod +x ./oclp-lid-sleep-hardening.zsh
+./oclp-lid-sleep-hardening.zsh --audit-only
+./oclp-lid-sleep-hardening.zsh --both-aggressive
+./oclp-lid-sleep-hardening.zsh --restore-balanced
+./oclp-lid-sleep-hardening.zsh --ec-lid-diagnostic
+```
+
+Default mode is `--both-aggressive`.
+
+Available modes:
+
+| Mode | Purpose |
+|---|---|
+| `--audit-only` | Write the normal report without applying changes. |
+| `--battery-aggressive` | Harden the battery profile and apply Bluetooth/AddressBook quieting. |
+| `--ac-aggressive` | Harden the AC profile and apply Bluetooth/AddressBook quieting. |
+| `--both-aggressive` | Harden both battery and AC profiles. This is the default. |
+| `--restore-balanced` | Restore a safer balanced battery and AC profile. |
+| `--ec-lid-diagnostic` | Print focused EC/lid/power evidence, recent hibernate stats, and battery external-power fields. |
+| `--help` | Show usage. |
+
+The script writes a report to your Desktop. Normal report modes also copy the report to the clipboard.
+
+---
+
+## 🛠️ What aggressive hardening changes
+
+On **battery** and/or **AC**, depending on the selected mode:
 
 ```text
 lidwake              0
@@ -65,16 +101,18 @@ ttyskeepawake        0
 powernap             0
 womp                 0
 acwake               0
+tcpkeepalive         0 where supported
+proximitywake        0 where supported
 ```
 
-It also disables Bluetooth auto-seek behaviour:
+It also disables Bluetooth auto-seek behaviour in hardening modes:
 
 ```text
 BluetoothAutoSeekKeyboard       false
 BluetoothAutoSeekPointingDevice false
 ```
 
-If `AddressBookSourceSync` is actively holding a sleep assertion when the script runs, the script disables that user LaunchAgent for the current user session.
+If `AddressBookSourceSync` is actively seen in current assertions when a hardening mode runs, the script disables that user LaunchAgent for the current user session. It does not blindly disable it during audit-only runs or when it is not currently involved.
 
 ---
 
@@ -83,45 +121,26 @@ If `AddressBookSourceSync` is actively holding a sleep assertion when the script
 | Change | Trade-off |
 |---|---|
 | `lidwake=0` | Opening the lid may not wake the Mac automatically. Press the power button or a key. |
-| `hibernatemode=25` | Wake may be slower because the Mac favours deeper hibernate-style sleep. |
+| `hibernatemode=25` | Wake may be slower because the Mac favours deeper hibernate-style sleep. Some OCLP machines may not behave well with this mode. |
 | `tcpkeepalive=0` | Sleep-time network features such as Find My Mac may not work normally while sleeping. |
+| AC aggressive profile | Useful when phantom `EC.ACAttach` is observed on battery, but less convenient for normal plugged-in behaviour. |
 | AddressBook SourceSync disable | Contacts source sync may pause until restored. |
 
-This is designed for people who want:
-
-> When I close the lid on battery, preserve battery first. Convenience second.
+Use `--restore-balanced` if `hibernatemode 25` or the aggressive profile causes wake, resume, or usability problems.
 
 ---
 
-## 🚀 Usage
+## 🔍 Verdicts
 
-```zsh
-chmod +x ./oclp-lid-sleep-hardening.zsh
-./oclp-lid-sleep-hardening.zsh
-```
+The report classifies the current state as one or more of:
 
-The script writes a report to your Desktop.
-
----
-
-## 🔍 Quick pre-lid audit
-
-Before closing the lid, check whether anything is currently blocking sleep:
-
-```zsh
-pmset -g batt
-pmset -g custom | egrep -i "Battery Power|lidwake|hibernatemode|standby|standbydelay|autopoweroff|ttyskeepawake|powernap|womp|acwake|sleep"
-pmset -g assertions
-```
-
-A clean result should show:
-
-```text
-PreventSystemSleep             0
-PreventUserIdleSystemSleep     0
-NetworkClientActive            0
-No kernel assertions.
-```
+| Verdict | Meaning |
+|---|---|
+| `CLEAN` | No current user-space/kernel blockers or recent EC/lid/input wake suspects detected. |
+| `USERSPACE_BLOCKED` | Current assertions show `PreventUserIdleSystemSleep`, `PreventSystemSleep`, or `NetworkClientActive`. |
+| `KERNEL_BLOCKED` | Current assertions show kernel sleep blockers such as CPU, IOPMrootDomain, or preventSleep. |
+| `EC_POWER_EVENT_SUSPECT` | Recent logs show `EC.ACAttach` or `EC.ACDetach`. |
+| `LID_INPUT_WAKE_SUSPECT` | Recent logs show lid, ACPI button, keyboard, trackpad, or `UserActivity` wake evidence. |
 
 ---
 
@@ -138,7 +157,9 @@ launchctl bootstrap "gui/$UID" /System/Library/LaunchAgents/com.apple.AddressBoo
 
 ## 🧠 Diagnostic notes
 
-During the original investigation, the following blockers and wake patterns appeared:
+Dortania/OpenCore sleep guidance notes that macOS lid wake detection can be broken and may require disabling lid wake with `pmset lidwake 0`. Dortania instant-wake guidance also discusses wake behaviour when USB or power states change while sleeping, which matches the observed `EC.ACAttach` / `EC.ACDetach` style evidence.
+
+Observed user-space blockers included:
 
 ```text
 Microsoft Excel:
@@ -149,22 +170,35 @@ AddressBookSourceSync:
   PreventUserIdleSystemSleep
   Address Book Source Sync
 
-cloudd / akd:
+cloudd / akd / identityservicesd:
   PreventUserIdleSystemSleep
   NSURLSessionTask
+  IDSPeerIDLookup
   com.apple.CFNetwork.StorageDB
-
-Wake patterns:
-  EC.PME/User
-  EC.LidOpen
-  EC.LidOpen PWRB/Lid Open
-  AppleEmbeddedKeyboard
-  AppleUSBMultitouchDriver
-  AppleACPIButton
-  AppleACPILid
 ```
 
-The script does not pretend every OCLP sleep issue has one universal fix. It gives you a stronger sleep baseline and a repeatable way to see what is blocking sleep right now.
+Observed wake patterns included:
+
+```text
+EC.ACAttach
+EC.ACDetach
+EC.LidOpen
+AppleEmbeddedKeyboard
+AppleUSBMultitouchDriver
+AppleACPIButton
+AppleACPILid
+UserActivity
+```
+
+---
+
+## 📦 What changed in v0.2.0
+
+- Adds AC aggressive profile because phantom AC attach can happen on battery.
+- Adds audit-only mode.
+- Adds EC/lid diagnostic mode.
+- Adds restore-balanced mode.
+- Adds clearer verdict classification.
 
 ---
 
