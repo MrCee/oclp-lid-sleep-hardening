@@ -29,6 +29,16 @@ Equivalent default invocation:
 ./oclp-lid-sleep-hardening.zsh
 ```
 
+## Near-offline sleep
+
+Applies the working aggressive battery and AC baseline, then attempts to suppress additional sleep-time network reachability with `networkoversleep 0` where supported. Use this only when EC attach/detach events look quiet and remaining drain appears to be periodic RTC/Maintenance or DarkWake behaviour.
+
+This is opt-in and does not guarantee zero drain. It may reduce Find My, Handoff, iCloud, app refresh, remote reachability, and other sleep-time services.
+
+```zsh
+./oclp-lid-sleep-hardening.zsh --near-offline-sleep
+```
+
 ## Restore balanced
 
 Restores safer battery and AC settings. Use this if aggressive hardening or `hibernatemode 25` causes wake, resume, or usability problems.

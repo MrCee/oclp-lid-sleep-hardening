@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.3.0 - near-offline sleep guidance
+
+- Add `--near-offline-sleep` as an explicit opt-in maximum drain suppression posture.
+- Keep `--both-aggressive` as the default working baseline for phantom EC attach/detach behaviour.
+- Add `NORMAL_MAINTENANCE_DARKWAKE_SUSPECT` verdict wording for residual RTC/Maintenance and DarkWake-style wakes.
+- Document that the improved overnight pattern can still include normal macOS maintenance wakes and does not imply zero drain.
+- Document trade-offs for Find My, sleep-time networking, Power Nap, wake convenience, slower resume, and reduced sleep-time services.
+
 ## v0.2.0 - EC/phantom AC attach aware hardening
 
 - Add AC aggressive hardening because phantom `EC.ACAttach` can appear while physically on battery.

@@ -18,6 +18,23 @@ Wake from Standby ... due to EC.ACAttach/Maintenance Using AC
 
 If `AppleSmartBattery` reports `ExternalConnected` as `0`, `No`, or `false` while these events appear, the script reports `EC_POWER_EVENT_SUSPECT`.
 
+When a targeted overnight window shows no new `EC.ACAttach` or `EC.ACDetach` events, treat the aggressive battery+AC profile as the current baseline and look at remaining wake causes separately.
+
+## Normal maintenance / DarkWake events
+
+These patterns suggest residual macOS maintenance wake behaviour rather than the earlier phantom EC attach/detach problem:
+
+```text
+Wake from Standby ... due to RTC/Maintenance Using BATT
+MaintenanceWake mDNSResponder:maintenance
+DarkWake
+HibernateStats hibmode=25 standbydelaylow=0 standbydelayhigh=0
+```
+
+The script reports `NORMAL_MAINTENANCE_DARKWAKE_SUSPECT` when recent logs contain RTC/Maintenance or DarkWake-style activity. This does not mean sleep hardening failed. It means the Mac is still doing some closed-lid maintenance that can consume battery even when current assertions and EC attach/detach events are quiet.
+
+Use `--near-offline-sleep` only when the goal is to reduce these remaining sleep-time network and maintenance paths as much as practical. It does not guarantee zero drain.
+
 ## Lid and input wake events
 
 These patterns suggest lid, ACPI button, keyboard, trackpad, USB input, or user activity involvement:

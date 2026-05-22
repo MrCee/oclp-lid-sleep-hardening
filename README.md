@@ -55,6 +55,8 @@ Wake from Standby due to EC.ACAttach/Maintenance Using AC
 
 Because macOS may route wake behaviour through AC paths after an `EC.ACAttach` event, hardening only the battery profile may not be enough on this machine.
 
+After applying the aggressive battery and AC profiles, the same machine showed a materially improved overnight result: no new `EC.ACAttach` or `EC.ACDetach` events appeared in a targeted 15-hour `pmset` window, the remaining wakes looked like periodic `RTC/Maintenance` / `DarkWake` behaviour, and the battery moved from roughly 100% near lid close to roughly 92-93% by morning. That remaining drain is treated as normal-ish macOS maintenance behaviour, not the earlier phantom EC attach/detach failure mode.
+
 ---
 
 ## ⚙️ Modes
@@ -63,6 +65,7 @@ Because macOS may route wake behaviour through AC paths after an `EC.ACAttach` e
 chmod +x ./oclp-lid-sleep-hardening.zsh
 ./oclp-lid-sleep-hardening.zsh --audit-only
 ./oclp-lid-sleep-hardening.zsh --both-aggressive
+./oclp-lid-sleep-hardening.zsh --near-offline-sleep
 ./oclp-lid-sleep-hardening.zsh --restore-balanced
 ./oclp-lid-sleep-hardening.zsh --ec-lid-diagnostic
 ```
@@ -77,6 +80,7 @@ Available modes:
 | `--battery-aggressive` | Harden the battery profile and apply Bluetooth/AddressBook quieting. |
 | `--ac-aggressive` | Harden the AC profile and apply Bluetooth/AddressBook quieting. |
 | `--both-aggressive` | Harden both battery and AC profiles. This is the default. |
+| `--near-offline-sleep` | Apply the working aggressive baseline and add maximum practical sleep-time network/maintenance suppression. |
 | `--restore-balanced` | Restore a safer balanced battery and AC profile. |
 | `--ec-lid-diagnostic` | Print focused EC/lid/power evidence, recent hibernate stats, and battery external-power fields. |
 | `--help` | Show usage. |
@@ -105,6 +109,8 @@ tcpkeepalive         0 where supported
 proximitywake        0 where supported
 ```
 
+This is the current working baseline. It is intentionally still the default via `--both-aggressive`, because the original failure pattern was a phantom EC/SMC AC attach/detach path that could make battery-only hardening insufficient.
+
 It also disables Bluetooth auto-seek behaviour in hardening modes:
 
 ```text
@@ -116,13 +122,36 @@ If `AddressBookSourceSync` is actively seen in current assertions when a hardeni
 
 ---
 
+## 📴 Near-offline sleep
+
+Use `--near-offline-sleep` only after the EC attach/detach problem looks quiet and the remaining drain appears to be normal macOS maintenance / DarkWake behaviour.
+
+```zsh
+./oclp-lid-sleep-hardening.zsh --near-offline-sleep
+```
+
+This mode does not replace the working baseline. It reapplies both aggressive battery and AC profiles, keeps Bluetooth/AddressBook quieting behaviour, and additionally attempts to disable sleep-time network reachability with:
+
+```text
+networkoversleep     0 where supported
+```
+
+The goal is maximum practical drain suppression, closer to a near-offline sleep posture. It attempts to reduce sleep-time network and maintenance wake paths as much as macOS exposes through `pmset`. It does not promise zero overnight drain, and it cannot guarantee that macOS will never perform RTC, maintenance, or DarkWake activity.
+
+This mode is deliberately opt-in because it can make the sleeping Mac less reachable and less serviceful while closed.
+
+---
+
 ## ⚠️ Important trade-offs
 
 | Change | Trade-off |
 |---|---|
 | `lidwake=0` | Opening the lid may not wake the Mac automatically. Press the power button or a key. |
 | `hibernatemode=25` | Wake may be slower because the Mac favours deeper hibernate-style sleep. Some OCLP machines may not behave well with this mode. |
-| `tcpkeepalive=0` | Sleep-time network features such as Find My Mac may not work normally while sleeping. |
+| `tcpkeepalive=0` | Sleep-time network features such as Find My Mac, remote reachability, and some iCloud/Handoff behaviour may not work normally while sleeping. |
+| `networkoversleep=0` | Near-offline mode further reduces sleep-time network reachability where supported. This can reduce maintenance wakes but may also reduce sleep-time services. |
+| `powernap=0` | Background mail, iCloud, Photos, app refresh, and other Power Nap-style maintenance should be reduced while sleeping. |
+| `womp=0` / `acwake=0` / `proximitywake=0` | Network, AC-change, and nearby-device wake paths are reduced where supported. Convenience wake behaviour may be worse. |
 | AC aggressive profile | Useful when phantom `EC.ACAttach` is observed on battery, but less convenient for normal plugged-in behaviour. |
 | AddressBook SourceSync disable | Contacts source sync may pause until restored. |
 
@@ -141,6 +170,7 @@ The report classifies the current state as one or more of:
 | `KERNEL_BLOCKED` | Current assertions show kernel sleep blockers such as CPU, IOPMrootDomain, or preventSleep. |
 | `EC_POWER_EVENT_SUSPECT` | Recent logs show `EC.ACAttach` or `EC.ACDetach`. |
 | `LID_INPUT_WAKE_SUSPECT` | Recent logs show lid, ACPI button, keyboard, trackpad, or `UserActivity` wake evidence. |
+| `NORMAL_MAINTENANCE_DARKWAKE_SUSPECT` | Recent logs show RTC/Maintenance or DarkWake-style activity that can still drain battery even when EC attach/detach and current blockers are quiet. |
 
 ---
 
@@ -190,7 +220,24 @@ AppleACPILid
 UserActivity
 ```
 
+After the aggressive baseline improved the EC attach/detach issue, remaining observed closed-lid wakes looked more like:
+
+```text
+Wake from Standby due to RTC/Maintenance Using BATT
+MaintenanceWake mDNSResponder:maintenance
+HibernateStats hibmode=25 standbydelaylow=0 standbydelayhigh=0
+```
+
+Those events can still consume battery. `--near-offline-sleep` is the opt-in posture for trying to reduce that remaining activity as much as practical.
+
 ---
+
+## 📦 What changed in v0.3.0
+
+- Adds `--near-offline-sleep` for explicit maximum practical drain suppression after EC attach/detach is quiet.
+- Adds `NORMAL_MAINTENANCE_DARKWAKE_SUSPECT` verdict wording for RTC/Maintenance and DarkWake-style residual drain.
+- Documents the current aggressive battery+AC profile as the working baseline.
+- Documents trade-offs around Find My, network wake, Power Nap, wake convenience, slower resume, and reduced sleep-time services.
 
 ## 📦 What changed in v0.2.0
 

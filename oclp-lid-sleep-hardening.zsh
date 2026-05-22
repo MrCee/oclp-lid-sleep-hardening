@@ -17,6 +17,7 @@ Modes:
   --battery-aggressive Apply aggressive battery sleep hardening.
   --ac-aggressive      Apply aggressive AC sleep hardening.
   --both-aggressive    Apply aggressive battery and AC sleep hardening. Default.
+  --near-offline-sleep Apply maximum drain suppression for both power profiles.
   --restore-balanced   Restore a safer balanced battery and AC sleep profile.
   --ec-lid-diagnostic  Print focused EC/lid/power diagnostics.
   --help               Show this help.
@@ -24,11 +25,18 @@ Modes:
 Default:
   --both-aggressive is the default because EC/SMC phantom AC attach events can
   make macOS use AC wake paths while the machine is physically on battery.
+
+Near-offline sleep:
+  --near-offline-sleep is an explicit opt-in posture for cases where EC attach
+  events are quiet and remaining drain appears to be normal RTC/Maintenance or
+  DarkWake behaviour. It attempts to suppress remaining sleep-time network and
+  maintenance wake paths as much as practical, but it does not guarantee zero
+  overnight drain.
 EOF
 }
 
 case "$MODE" in
-  --audit-only|--battery-aggressive|--ac-aggressive|--both-aggressive|--restore-balanced|--ec-lid-diagnostic)
+  --audit-only|--battery-aggressive|--ac-aggressive|--both-aggressive|--near-offline-sleep|--restore-balanced|--ec-lid-diagnostic)
     ;;
   --help|-h)
     usage
@@ -147,6 +155,15 @@ apply_ac_aggressive() {
   sudo pmset -c proximitywake 0 2>/dev/null || true
 }
 
+apply_near_offline_sleep() {
+  heading "Applying near-offline sleep profile"
+  echo "Reason: EC attach/detach appears quiet, but normal RTC/Maintenance or DarkWake events may still drain battery."
+  echo "This mode keeps the aggressive baseline and disables additional sleep-time network reachability where supported."
+  apply_battery_aggressive
+  apply_ac_aggressive
+  sudo pmset -a networkoversleep 0 2>/dev/null || true
+}
+
 restore_balanced() {
   heading "Restoring balanced battery and AC profiles"
   sudo pmset -b lidwake 1
@@ -256,9 +273,21 @@ print_expected_profiles() {
   echo "  powernap             0"
   echo "  womp                 0"
   echo "  acwake               0"
+  echo "  tcpkeepalive         0 where supported"
+  echo "  proximitywake        0 where supported"
   echo
   echo "Note: lidwake=0 means opening the lid may not wake the Mac."
   echo "Use the power button or keyboard to wake it."
+}
+
+print_expected_near_offline_profile() {
+  print_expected_profiles
+  heading "Additional near-offline expectations"
+  echo "Battery Power and AC Power should also show where supported:"
+  echo "  networkoversleep     0"
+  echo
+  echo "This mode cannot cancel every macOS RTC/Maintenance wake."
+  echo "It is intended to reduce sleep-time networking and maintenance paths as much as practical."
 }
 
 print_verdict() {
@@ -293,6 +322,14 @@ print_verdict() {
   if echo "$logs" | grep -E -q "EC\.LidOpen|AppleACPILid|AppleEmbeddedKeyboard|AppleUSBMultitouchDriver|AppleACPIButton|UserActivity"; then
     echo "LID_INPUT_WAKE_SUSPECT: recent logs show lid, ACPI button, keyboard, trackpad, or UserActivity wake evidence."
     echo "$logs" | grep -E -i "EC\.LidOpen|AppleACPILid|AppleEmbeddedKeyboard|AppleUSBMultitouchDriver|AppleACPIButton|UserActivity" | tail -20 || true
+    echo
+    found=1
+  fi
+
+  if echo "$logs" | grep -E -q "RTC/Maintenance|MaintenanceWake|DarkWake|mDNSResponder:maintenance"; then
+    echo "NORMAL_MAINTENANCE_DARKWAKE_SUSPECT: recent logs show RTC/Maintenance or DarkWake-style activity."
+    echo "$logs" | grep -E -i "RTC/Maintenance|MaintenanceWake|DarkWake|mDNSResponder:maintenance" | tail -20 || true
+    echo "This can still consume battery even when EC attach/detach and current sleep blockers are quiet."
     echo
     found=1
   fi
@@ -366,6 +403,11 @@ run_report() {
         apply_bluetooth_quieting
         disable_addressbook_if_blocking
         ;;
+      --near-offline-sleep)
+        apply_near_offline_sleep
+        apply_bluetooth_quieting
+        disable_addressbook_if_blocking
+        ;;
       --restore-balanced)
         restore_balanced
         ;;
@@ -379,7 +421,9 @@ run_report() {
     print_addressbook_state
     print_verdict
 
-    if [[ "$MODE" == "--battery-aggressive" || "$MODE" == "--ac-aggressive" || "$MODE" == "--both-aggressive" ]]; then
+    if [[ "$MODE" == "--near-offline-sleep" ]]; then
+      print_expected_near_offline_profile
+    elif [[ "$MODE" == "--battery-aggressive" || "$MODE" == "--ac-aggressive" || "$MODE" == "--both-aggressive" ]]; then
       print_expected_profiles
     fi
 
