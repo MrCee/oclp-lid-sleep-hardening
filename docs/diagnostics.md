@@ -1,6 +1,6 @@
 # Diagnostics
 
-Use `--ec-lid-diagnostic` when the machine still wakes after the expected pmset profile has been applied.
+Use `--ec-lid-diagnostic` when the machine still wakes or drains after the default battery near-offline profile has been applied.
 
 ```zsh
 ./oclp-lid-sleep-hardening.zsh --ec-lid-diagnostic
@@ -18,7 +18,7 @@ Wake from Standby ... due to EC.ACAttach/Maintenance Using AC
 
 If `AppleSmartBattery` reports `ExternalConnected` as `0`, `No`, or `false` while these events appear, the script reports `EC_POWER_EVENT_SUSPECT`.
 
-When a targeted overnight window shows no new `EC.ACAttach` or `EC.ACDetach` events, treat the aggressive battery+AC profile as the current baseline and look at remaining wake causes separately.
+When a targeted overnight window shows no new `EC.ACAttach` or `EC.ACDetach` events, treat the default battery near-offline profile as the current baseline and look at remaining wake causes separately.
 
 ## Normal maintenance / DarkWake events
 
@@ -31,9 +31,9 @@ DarkWake
 HibernateStats hibmode=25 standbydelaylow=0 standbydelayhigh=0
 ```
 
-The script reports `NORMAL_MAINTENANCE_DARKWAKE_SUSPECT` when recent logs contain RTC/Maintenance or DarkWake-style activity. This does not mean sleep hardening failed. It means the Mac is still doing some closed-lid maintenance that can consume battery even when current assertions and EC attach/detach events are quiet.
+The script reports `NORMAL_MAINTENANCE_DARKWAKE_SUSPECT` when recent logs contain RTC/Maintenance or DarkWake-style activity. This does not mean sleep hardening failed. It means macOS or firmware still performed some closed-lid activity that can consume battery even when current assertions and EC attach/detach events are quiet.
 
-Use `--near-offline-sleep` only when the goal is to reduce these remaining sleep-time network and maintenance paths as much as practical. It does not guarantee zero drain.
+The default now targets battery near-offline sleep. Remaining RTC, hibernate, SMC, battery, or maintenance activity may still occur if macOS/firmware forces it. The tool does not guarantee zero drain.
 
 ## Lid and input wake events
 

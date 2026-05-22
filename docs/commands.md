@@ -15,28 +15,34 @@ Reports current pmset settings, assertions, scheduled wakes, Bluetooth prefs, Ad
 ./oclp-lid-sleep-hardening.zsh --audit-only
 ```
 
-## Both aggressive
+## Default battery near-offline
 
-Applies aggressive battery and AC profiles. This is the default because phantom `EC.ACAttach` can route macOS into AC wake behaviour while the machine is physically on battery.
+Applies the default battery-first posture. On battery with the lid closed, the goal is to stay asleep as much as macOS/OCLP allows and avoid intentional convenience wakes for network, Power Nap, proximity, Bluetooth auto-seek, AC-change wake, and similar behaviour.
 
-```zsh
-./oclp-lid-sleep-hardening.zsh --both-aggressive
-```
-
-Equivalent default invocation:
+The default also applies the AC aggressive compatibility profile because phantom `EC.ACAttach` can route battery sleep through AC wake settings. It does not guarantee zero wakes or zero drain.
 
 ```zsh
 ./oclp-lid-sleep-hardening.zsh
 ```
 
-## Near-offline sleep
+Equivalent explicit invocation:
 
-Applies the working aggressive battery and AC baseline, then attempts to suppress additional sleep-time network reachability with `networkoversleep 0` where supported. Use this only when EC attach/detach events look quiet and remaining drain appears to be periodic RTC/Maintenance or DarkWake behaviour.
+```zsh
+./oclp-lid-sleep-hardening.zsh --battery-near-offline
+```
 
-This is opt-in and does not guarantee zero drain. It may reduce Find My, Handoff, iCloud, app refresh, remote reachability, and other sleep-time services.
+Backwards-compatible alias:
 
 ```zsh
 ./oclp-lid-sleep-hardening.zsh --near-offline-sleep
+```
+
+## Both aggressive
+
+Applies aggressive battery and AC profiles without the extra battery `networkoversleep 0` near-offline setting. This is retained as an explicit compatibility mode.
+
+```zsh
+./oclp-lid-sleep-hardening.zsh --both-aggressive
 ```
 
 ## Restore balanced

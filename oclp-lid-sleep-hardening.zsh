@@ -2,7 +2,7 @@
 set -u
 
 SCRIPT_NAME="${0:t}"
-MODE="${1:---both-aggressive}"
+MODE="${1:---battery-near-offline}"
 OUT="$HOME/Desktop/oclp-lid-sleep-hardening-$(date +%Y%m%d-%H%M%S).txt"
 
 usage() {
@@ -14,29 +14,34 @@ Usage:
 
 Modes:
   --audit-only          Report current sleep state without applying changes.
+  --battery-near-offline
+                        Default. Maximize battery lid-closed drain suppression.
   --battery-aggressive Apply aggressive battery sleep hardening.
   --ac-aggressive      Apply aggressive AC sleep hardening.
-  --both-aggressive    Apply aggressive battery and AC sleep hardening. Default.
-  --near-offline-sleep Apply maximum drain suppression for both power profiles.
+  --both-aggressive    Apply aggressive battery and AC sleep hardening.
+  --near-offline-sleep Alias for --battery-near-offline.
   --restore-balanced   Restore a safer balanced battery and AC sleep profile.
   --ec-lid-diagnostic  Print focused EC/lid/power diagnostics.
   --help               Show this help.
 
 Default:
-  --both-aggressive is the default because EC/SMC phantom AC attach events can
-  make macOS use AC wake paths while the machine is physically on battery.
+  --battery-near-offline is battery-first. When the MacBook is on battery and
+  the lid is closed, the target is to stay asleep as much as macOS/OCLP allows:
+  no intentional convenience wakes for networking, Power Nap, proximity, or
+  similar sleep-time services. Firmware or macOS may still perform unavoidable
+  RTC, hibernate, SMC, battery, or maintenance events, so zero drain is not
+  guaranteed.
 
-Near-offline sleep:
-  --near-offline-sleep is an explicit opt-in posture for cases where EC attach
-  events are quiet and remaining drain appears to be normal RTC/Maintenance or
-  DarkWake behaviour. It attempts to suppress remaining sleep-time network and
-  maintenance wake paths as much as practical, but it does not guarantee zero
-  overnight drain.
+AC compatibility:
+  The default also keeps the AC aggressive compatibility profile because earlier
+  EC/SMC phantom AC attach events could route battery sleep through AC wake
+  settings. It does not add the extra battery near-offline networkoversleep
+  setting to the AC profile.
 EOF
 }
 
 case "$MODE" in
-  --audit-only|--battery-aggressive|--ac-aggressive|--both-aggressive|--near-offline-sleep|--restore-balanced|--ec-lid-diagnostic)
+  --audit-only|--battery-near-offline|--battery-aggressive|--ac-aggressive|--both-aggressive|--near-offline-sleep|--restore-balanced|--ec-lid-diagnostic)
     ;;
   --help|-h)
     usage
@@ -156,12 +161,18 @@ apply_ac_aggressive() {
 }
 
 apply_near_offline_sleep() {
-  heading "Applying near-offline sleep profile"
-  echo "Reason: EC attach/detach appears quiet, but normal RTC/Maintenance or DarkWake events may still drain battery."
-  echo "This mode keeps the aggressive baseline and disables additional sleep-time network reachability where supported."
+  heading "Applying battery near-offline profile"
+  echo "Reason: battery lid-closed sleep should avoid intentional convenience wakes as much as macOS/OCLP allows."
   apply_battery_aggressive
+  sudo pmset -b networkoversleep 0 2>/dev/null || true
+}
+
+apply_default_battery_near_offline() {
+  heading "Applying default battery-first near-offline posture"
+  echo "Battery: maximum drain suppression for lid-closed sleep."
+  echo "AC: aggressive compatibility profile retained for phantom EC.ACAttach routing."
+  apply_near_offline_sleep
   apply_ac_aggressive
-  sudo pmset -a networkoversleep 0 2>/dev/null || true
 }
 
 restore_balanced() {
@@ -281,13 +292,26 @@ print_expected_profiles() {
 }
 
 print_expected_near_offline_profile() {
-  print_expected_profiles
-  heading "Additional near-offline expectations"
-  echo "Battery Power and AC Power should also show where supported:"
+  heading "Expected default battery near-offline profile"
+  echo "Battery Power should show roughly:"
+  echo "  lidwake              0"
+  echo "  hibernatemode        25"
+  echo "  standby              1"
+  echo "  standbydelayhigh     0"
+  echo "  standbydelaylow      0"
+  echo "  autopoweroff         1"
+  echo "  autopoweroffdelay    0"
+  echo "  ttyskeepawake        0"
+  echo "  powernap             0"
+  echo "  womp                 0"
+  echo "  acwake               0"
+  echo "  tcpkeepalive         0 where supported"
+  echo "  proximitywake        0 where supported"
   echo "  networkoversleep     0"
   echo
-  echo "This mode cannot cancel every macOS RTC/Maintenance wake."
-  echo "It is intended to reduce sleep-time networking and maintenance paths as much as practical."
+  echo "AC Power should show the aggressive compatibility profile, without relying on the extra battery-only networkoversleep setting."
+  echo "This default cannot cancel every macOS RTC/Maintenance wake or guarantee zero drain."
+  echo "It is intended to stop intentional battery convenience wakes while closed as much as practical."
 }
 
 print_verdict() {
@@ -392,6 +416,11 @@ run_report() {
         apply_bluetooth_quieting
         disable_addressbook_if_blocking
         ;;
+      --battery-near-offline|--near-offline-sleep)
+        apply_default_battery_near_offline
+        apply_bluetooth_quieting
+        disable_addressbook_if_blocking
+        ;;
       --ac-aggressive)
         apply_ac_aggressive
         apply_bluetooth_quieting
@@ -400,11 +429,6 @@ run_report() {
       --both-aggressive)
         apply_battery_aggressive
         apply_ac_aggressive
-        apply_bluetooth_quieting
-        disable_addressbook_if_blocking
-        ;;
-      --near-offline-sleep)
-        apply_near_offline_sleep
         apply_bluetooth_quieting
         disable_addressbook_if_blocking
         ;;
@@ -421,7 +445,7 @@ run_report() {
     print_addressbook_state
     print_verdict
 
-    if [[ "$MODE" == "--near-offline-sleep" ]]; then
+    if [[ "$MODE" == "--battery-near-offline" || "$MODE" == "--near-offline-sleep" ]]; then
       print_expected_near_offline_profile
     elif [[ "$MODE" == "--battery-aggressive" || "$MODE" == "--ac-aggressive" || "$MODE" == "--both-aggressive" ]]; then
       print_expected_profiles

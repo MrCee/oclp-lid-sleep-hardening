@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.0 - battery near-offline default
+
+- Make `--battery-near-offline` the default mode.
+- Preserve `--near-offline-sleep` as a backwards-compatible alias for the new default.
+- Keep `--both-aggressive` as an explicit compatibility mode rather than the default.
+- Document the project as intentionally battery-first: lid-closed battery sleep should avoid intentional convenience wakes as much as macOS/OCLP allows.
+- Keep AC aggressive compatibility in the default because phantom `EC.ACAttach` can route battery sleep through AC wake settings.
+- Avoid claiming zero wakes or zero drain; firmware/macOS may still perform unavoidable RTC, hibernate, SMC, battery, or maintenance events.
+
 ## v0.3.0 - near-offline sleep guidance
 
 - Add `--near-offline-sleep` as an explicit opt-in maximum drain suppression posture.
