@@ -31,12 +31,6 @@ Equivalent explicit invocation:
 ./oclp-lid-sleep-hardening.zsh --battery-near-offline
 ```
 
-Backwards-compatible alias:
-
-```zsh
-./oclp-lid-sleep-hardening.zsh --near-offline-sleep
-```
-
 ## Both aggressive
 
 Applies aggressive battery and AC profiles without the extra battery `networkoversleep 0` near-offline setting. This is retained as an explicit compatibility mode.

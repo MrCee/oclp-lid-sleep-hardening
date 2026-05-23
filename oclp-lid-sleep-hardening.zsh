@@ -3,6 +3,7 @@ set -u
 
 SCRIPT_NAME="${0:t}"
 MODE="${1:---battery-near-offline}"
+DEPRECATED_ALIAS=""
 OUT="$HOME/Desktop/oclp-lid-sleep-hardening-$(date +%Y%m%d-%H%M%S).txt"
 
 usage() {
@@ -19,7 +20,6 @@ Modes:
   --battery-aggressive Apply aggressive battery sleep hardening.
   --ac-aggressive      Apply aggressive AC sleep hardening.
   --both-aggressive    Apply aggressive battery and AC sleep hardening.
-  --near-offline-sleep Alias for --battery-near-offline.
   --restore-balanced   Restore a safer balanced battery and AC sleep profile.
   --ec-lid-diagnostic  Print focused EC/lid/power diagnostics.
   --help               Show this help.
@@ -41,7 +41,11 @@ EOF
 }
 
 case "$MODE" in
-  --audit-only|--battery-near-offline|--battery-aggressive|--ac-aggressive|--both-aggressive|--near-offline-sleep|--restore-balanced|--ec-lid-diagnostic)
+  --near-offline-sleep)
+    DEPRECATED_ALIAS="$MODE"
+    MODE="--battery-near-offline"
+    ;;
+  --audit-only|--battery-near-offline|--battery-aggressive|--ac-aggressive|--both-aggressive|--restore-balanced|--ec-lid-diagnostic)
     ;;
   --help|-h)
     usage
@@ -69,6 +73,9 @@ heading() {
 print_context() {
   echo "Generated: $(date)"
   echo "Mode: $MODE"
+  if [[ -n "$DEPRECATED_ALIAS" ]]; then
+    echo "Requested alias: $DEPRECATED_ALIAS (deprecated compatibility alias for --battery-near-offline)"
+  fi
   echo "User: $(whoami)"
   echo "Host: $(hostname)"
   echo
@@ -416,7 +423,7 @@ run_report() {
         apply_bluetooth_quieting
         disable_addressbook_if_blocking
         ;;
-      --battery-near-offline|--near-offline-sleep)
+      --battery-near-offline)
         apply_default_battery_near_offline
         apply_bluetooth_quieting
         disable_addressbook_if_blocking
@@ -445,7 +452,7 @@ run_report() {
     print_addressbook_state
     print_verdict
 
-    if [[ "$MODE" == "--battery-near-offline" || "$MODE" == "--near-offline-sleep" ]]; then
+    if [[ "$MODE" == "--battery-near-offline" ]]; then
       print_expected_near_offline_profile
     elif [[ "$MODE" == "--battery-aggressive" || "$MODE" == "--ac-aggressive" || "$MODE" == "--both-aggressive" ]]; then
       print_expected_profiles

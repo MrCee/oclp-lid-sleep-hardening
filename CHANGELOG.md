@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Hide `--near-offline-sleep` from primary help and docs so `--battery-near-offline` is the single clear name for the default battery-first posture.
+- Keep `--near-offline-sleep` only as a deprecated compatibility alias that maps to `--battery-near-offline`.
+
 ## v0.4.0 - battery near-offline default
 
 - Make `--battery-near-offline` the default mode.

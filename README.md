@@ -71,7 +71,6 @@ Running the script with no mode now uses:
 |---|---|
 | `--audit-only` | Write the normal diagnostic report without applying changes. |
 | `--battery-near-offline` | Default. Maximize battery lid-closed drain suppression and keep AC aggressive compatibility for phantom EC attach routing. |
-| `--near-offline-sleep` | Backwards-compatible alias for `--battery-near-offline`. |
 | `--battery-aggressive` | Apply the aggressive battery profile only. |
 | `--ac-aggressive` | Apply the aggressive AC profile only. |
 | `--both-aggressive` | Apply the aggressive battery and AC profiles without the extra battery `networkoversleep` near-offline setting. |
@@ -80,6 +79,8 @@ Running the script with no mode now uses:
 | `--help` | Show usage. |
 
 The script writes a report to your Desktop. Normal report modes also copy the report to the clipboard.
+
+`--near-offline-sleep` is retained only as a deprecated compatibility alias for `--battery-near-offline`. New usage and documentation should use `--battery-near-offline`.
 
 ## Default Battery Near-Offline Posture
 
@@ -196,10 +197,14 @@ launchctl bootstrap "gui/$UID" /System/Library/LaunchAgents/com.apple.AddressBoo
 
 ## Changelog Summary
 
+### Current
+
+- Hides `--near-offline-sleep` from primary mode documentation; it remains only as a deprecated compatibility alias for `--battery-near-offline`.
+
 ### v0.4.0
 
 - Makes battery near-offline sleep the default.
-- Keeps `--near-offline-sleep` as a backwards-compatible alias.
+- Introduces `--battery-near-offline` as the clear default mode name.
 - Keeps AC aggressive compatibility because phantom EC attach can route battery sleep through AC wake settings.
 - Documents the project as intentionally battery-first.
 
