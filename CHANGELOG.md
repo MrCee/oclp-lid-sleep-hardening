@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an opt-in root LaunchDaemon that watches lid and AppleSmartBattery external-power state.
+- Return confirmed closed-battery maintenance wakes to sleep with `pmset sleepnow`.
+- After four continuous hours closed on battery, fully shut down at the first wake/check at or after the threshold.
+- Reset the continuous timer when the lid opens or external power reconnects.
+- Add install, status, and removal commands plus persistent watchdog diagnostics.
 - Hide `--near-offline-sleep` from primary help and docs so `--battery-near-offline` is the single clear name for the default battery-first posture.
 - Keep `--near-offline-sleep` only as a deprecated compatibility alias that maps to `--battery-near-offline`.
 

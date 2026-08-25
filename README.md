@@ -12,7 +12,7 @@ When the MacBook is on battery and the lid is closed, it should stay asleep as m
 
 That means battery lid-closed sleep may behave more like near-offline hibernation. This is intentional.
 
-The tool does not promise zero wakes or zero drain. macOS, firmware, SMC, battery management, hibernate, or unavoidable RTC/maintenance events may still happen.
+The pmset profile alone does not promise zero wakes or zero drain. macOS, firmware, SMC, battery management, hibernate, or unavoidable RTC/maintenance events may still happen. The optional lid watchdog addresses that remaining failure mode by returning closed-battery wakes to sleep and shutting down after four continuous hours.
 
 ## What This Is For
 
@@ -53,10 +53,12 @@ The next target is therefore suppressing normal macOS maintenance/convenience wa
 ## Quick Start
 
 ```zsh
-cd /Users/paul/repos/oclp-lid-sleep-hardening
+cd /path/to/oclp-lid-sleep-hardening
 chmod +x ./oclp-lid-sleep-hardening.zsh
 ./oclp-lid-sleep-hardening.zsh --audit-only
 ./oclp-lid-sleep-hardening.zsh
+./oclp-lid-sleep-hardening.zsh --install-lid-watchdog
+./oclp-lid-sleep-hardening.zsh --lid-watchdog-status
 ```
 
 Running the script with no mode now uses:
@@ -76,11 +78,43 @@ Running the script with no mode now uses:
 | `--both-aggressive` | Apply the aggressive battery and AC profiles without the extra battery `networkoversleep` near-offline setting. |
 | `--restore-balanced` | Restore safer balanced battery and AC settings. |
 | `--ec-lid-diagnostic` | Print focused EC/lid/power diagnostics. |
+| `--install-lid-watchdog` | Install and start the root LaunchDaemon that returns closed-battery wakes to sleep, then shuts down after four hours. |
+| `--lid-watchdog-status` | Show the installed files, current lid/power/timer readings, service state, and recent logs. |
+| `--remove-lid-watchdog` | Stop and remove the watchdog and its active timer state while preserving logs. |
 | `--help` | Show usage. |
 
 The script writes a report to your Desktop. Normal report modes also copy the report to the clipboard.
 
 `--near-offline-sleep` is retained only as a deprecated compatibility alias for `--battery-near-offline`. New usage and documentation should use `--battery-near-offline`.
+
+## Closed-Lid Battery Watchdog
+
+The optional watchdog handles the residual maintenance-wake problem that pmset preferences cannot prevent on this OCLP machine.
+
+Its policy is deliberately narrow:
+
+1. It samples `AppleClamshellState` and the AppleSmartBattery `ExternalConnected` property every five seconds while the Mac is awake.
+2. When both readings confirm lid closed and battery power, it starts a persistent elapsed-time marker and runs `pmset sleepnow`.
+3. Each later unwanted wake with the same conditions is immediately returned to sleep.
+4. At the first wake or check after four continuous hours, it runs `shutdown -h now` instead of returning to sleep.
+5. Opening the lid or connecting external power clears the timer.
+
+The four-hour shutdown does not create a new RTC wake merely to meet an exact deadline. If the Mac is fully asleep at four hours, shutdown occurs on the first subsequent wake. On the diagnosed machine, periodic maintenance wakes provide that opportunity.
+
+Install and inspect it explicitly:
+
+```zsh
+./oclp-lid-sleep-hardening.zsh --install-lid-watchdog
+./oclp-lid-sleep-hardening.zsh --lid-watchdog-status
+```
+
+Remove it with:
+
+```zsh
+./oclp-lid-sleep-hardening.zsh --remove-lid-watchdog
+```
+
+The watchdog never shuts down merely because the Mac is on battery: both battery power and a closed lid must be confirmed. Nevertheless, the four-hour shutdown terminates applications without waiting for unsaved-document dialogs. Save work before closing the lid on battery. A full shutdown cannot restore the exact in-memory session; before the threshold, mode 25 hibernation remains resumable in the normal way.
 
 ## Default Battery Near-Offline Posture
 
@@ -154,6 +188,8 @@ The default does not add the extra battery near-offline `networkoversleep` setti
 | `proximitywake=0` | Nearby-device convenience wake is reduced where supported. |
 | Bluetooth auto-seek disabled | Bluetooth keyboard/mouse discovery convenience may be reduced. |
 | AddressBook SourceSync disable | Contacts source sync may pause until restored if it was actively blocking sleep. |
+| Lid watchdog | Closed-battery maintenance wakes are forced back to sleep, which intentionally prevents remote access and background work. |
+| Four-hour watchdog shutdown | Applications are terminated without unsaved-document dialogs, and the exact hibernated session cannot be restored afterward. |
 
 Use `--restore-balanced` if the near-offline posture causes unacceptable wake, resume, or usability problems.
 
@@ -199,6 +235,9 @@ launchctl bootstrap "gui/$UID" /System/Library/LaunchAgents/com.apple.AddressBoo
 
 ### Current
 
+- Adds an opt-in closed-lid battery watchdog LaunchDaemon.
+- Forces residual closed-battery wakes back to sleep and shuts down at the first wake/check after four continuous hours.
+- Resets the shutdown timer whenever the lid opens or external power reconnects.
 - Hides `--near-offline-sleep` from primary mode documentation; it remains only as a deprecated compatibility alias for `--battery-near-offline`.
 
 ### v0.4.0

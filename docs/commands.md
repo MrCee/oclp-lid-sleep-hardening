@@ -3,7 +3,7 @@
 Run commands from the repository root:
 
 ```zsh
-cd /Users/paul/repos/oclp-lid-sleep-hardening
+cd /path/to/oclp-lid-sleep-hardening
 chmod +x ./oclp-lid-sleep-hardening.zsh
 ```
 
@@ -53,6 +53,35 @@ Prints a focused diagnostic report for battery state, battery profile, assertion
 
 ```zsh
 ./oclp-lid-sleep-hardening.zsh --ec-lid-diagnostic
+```
+
+## Install the closed-lid battery watchdog
+
+Installs a root LaunchDaemon that performs two actions only when both the lid is closed and AppleSmartBattery reports no external power:
+
+- Return unwanted wakes to sleep with `pmset sleepnow`.
+- After four continuous hours, fully shut down on the first wake/check at or after the threshold.
+
+Opening the lid or connecting power resets the four-hour timer. The shutdown terminates applications without waiting for unsaved-document dialogs.
+
+```zsh
+./oclp-lid-sleep-hardening.zsh --install-lid-watchdog
+```
+
+## Show watchdog status
+
+Shows installed files, live lid and power readings, elapsed/remaining time, LaunchDaemon state, and recent logs. This mode does not change power state.
+
+```zsh
+./oclp-lid-sleep-hardening.zsh --lid-watchdog-status
+```
+
+## Remove the watchdog
+
+Stops and removes the LaunchDaemon, executable, and active timer state. Diagnostic log files under `/var/log` are preserved.
+
+```zsh
+./oclp-lid-sleep-hardening.zsh --remove-lid-watchdog
 ```
 
 ## Help

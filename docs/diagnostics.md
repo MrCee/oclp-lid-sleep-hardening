@@ -35,6 +35,30 @@ The script reports `NORMAL_MAINTENANCE_DARKWAKE_SUSPECT` when recent logs contai
 
 The default now targets battery near-offline sleep. Remaining RTC, hibernate, SMC, battery, or maintenance activity may still occur if macOS/firmware forces it. The tool does not guarantee zero drain.
 
+## Watchdog intervention
+
+When residual maintenance wakes cause material drain, install the optional watchdog and inspect its status:
+
+```zsh
+./oclp-lid-sleep-hardening.zsh --install-lid-watchdog
+./oclp-lid-sleep-hardening.zsh --lid-watchdog-status
+```
+
+A healthy installed state reports `lid`, `power`, the closed-on-battery timestamp, elapsed time, and remaining time. The primary log is:
+
+```text
+/var/log/com.mrcee.oclp-lid-sleep-watchdog.log
+```
+
+Expected interventions resemble:
+
+```text
+Closed on battery for 02:00:04; forcing this wake back to sleep.
+Closed on battery for 04:00:09; initiating full shutdown and terminating applications.
+```
+
+The timer must reset when the lid opens or external power connects. An `unknown` sensor reading is treated conservatively and never qualifies for re-sleep or shutdown. The service does not schedule a new wake at exactly four hours; shutdown occurs at the first wake/check after the threshold.
+
 ## Lid and input wake events
 
 These patterns suggest lid, ACPI button, keyboard, trackpad, USB input, or user activity involvement:
