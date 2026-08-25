@@ -2,9 +2,18 @@
 set -u
 
 SCRIPT_NAME="${0:t}"
+SCRIPT_DIR="${0:A:h}"
 MODE="${1:---battery-near-offline}"
 DEPRECATED_ALIAS=""
 OUT="$HOME/Desktop/oclp-lid-sleep-hardening-$(date +%Y%m%d-%H%M%S).txt"
+WATCHDOG_LABEL="com.mrcee.oclp-lid-sleep-watchdog"
+WATCHDOG_SOURCE="$SCRIPT_DIR/support/oclp-lid-sleep-watchdog.zsh"
+WATCHDOG_PLIST_SOURCE="$SCRIPT_DIR/support/$WATCHDOG_LABEL.plist"
+WATCHDOG_INSTALL_PATH="/Library/PrivilegedHelperTools/$WATCHDOG_LABEL"
+WATCHDOG_PLIST_PATH="/Library/LaunchDaemons/$WATCHDOG_LABEL.plist"
+WATCHDOG_STATE_PATH="/var/run/$WATCHDOG_LABEL.closed-on-battery-since"
+WATCHDOG_LOG_PATH="/var/log/$WATCHDOG_LABEL.log"
+WATCHDOG_ERROR_LOG_PATH="/var/log/$WATCHDOG_LABEL.error.log"
 
 usage() {
   cat <<'EOF'
@@ -22,7 +31,20 @@ Modes:
   --both-aggressive    Apply aggressive battery and AC sleep hardening.
   --restore-balanced   Restore a safer balanced battery and AC sleep profile.
   --ec-lid-diagnostic  Print focused EC/lid/power diagnostics.
+  --install-lid-watchdog
+                        Install the closed-lid battery re-sleep watchdog.
+  --lid-watchdog-status
+                        Show watchdog installation, runtime, and timer state.
+  --remove-lid-watchdog
+                        Stop and remove the watchdog (logs are preserved).
   --help               Show this help.
+
+Watchdog policy:
+  While the lid remains closed on battery, unwanted wakes are immediately sent
+  back to sleep. After four continuous hours, the next wake fully shuts down
+  the Mac and terminates applications. Opening the lid or connecting external
+  power resets the four-hour timer. Unsaved application work can be lost when
+  the shutdown threshold is reached.
 
 Default:
   --battery-near-offline is battery-first. When the MacBook is on battery and
@@ -45,7 +67,7 @@ case "$MODE" in
     DEPRECATED_ALIAS="$MODE"
     MODE="--battery-near-offline"
     ;;
-  --audit-only|--battery-near-offline|--battery-aggressive|--ac-aggressive|--both-aggressive|--restore-balanced|--ec-lid-diagnostic)
+  --audit-only|--battery-near-offline|--battery-aggressive|--ac-aggressive|--both-aggressive|--restore-balanced|--ec-lid-diagnostic|--install-lid-watchdog|--lid-watchdog-status|--remove-lid-watchdog)
     ;;
   --help|-h)
     usage
@@ -61,6 +83,85 @@ esac
 
 run_optional() {
   "$@" 2>/dev/null || true
+}
+
+validate_watchdog_sources() {
+  if [[ ! -f "$WATCHDOG_SOURCE" || ! -f "$WATCHDOG_PLIST_SOURCE" ]]; then
+    echo "Watchdog support files are missing from: $SCRIPT_DIR/support" >&2
+    return 1
+  fi
+
+  /bin/zsh -n "$WATCHDOG_SOURCE" || return 1
+  /usr/bin/plutil -lint "$WATCHDOG_PLIST_SOURCE" || return 1
+}
+
+install_lid_watchdog() {
+  echo "Installing the OCLP closed-lid battery sleep watchdog."
+  echo
+  echo "Policy:"
+  echo "  - Lid closed + battery: force unwanted wakes back to sleep."
+  echo "  - Four continuous hours: fully shut down on the next wake/check."
+  echo "  - Lid opened or external power connected: reset the timer."
+  echo
+  echo "WARNING: the four-hour shutdown terminates applications without waiting"
+  echo "for unsaved-document dialogs. Save work before closing the lid on battery."
+  echo
+
+  validate_watchdog_sources || return 1
+
+  sudo /bin/launchctl bootout system "$WATCHDOG_PLIST_PATH" 2>/dev/null || true
+  sudo /usr/bin/install -o root -g wheel -m 0755 "$WATCHDOG_SOURCE" "$WATCHDOG_INSTALL_PATH" || return 1
+  sudo /usr/bin/install -o root -g wheel -m 0644 "$WATCHDOG_PLIST_SOURCE" "$WATCHDOG_PLIST_PATH" || return 1
+  sudo /usr/bin/plutil -lint "$WATCHDOG_PLIST_PATH" || return 1
+  sudo /bin/launchctl bootstrap system "$WATCHDOG_PLIST_PATH" || return 1
+  sudo /bin/launchctl enable "system/$WATCHDOG_LABEL" || return 1
+  sudo /bin/launchctl kickstart -k "system/$WATCHDOG_LABEL" || return 1
+
+  echo
+  echo "Installed and started: $WATCHDOG_LABEL"
+  echo "Check it with: ./$SCRIPT_NAME --lid-watchdog-status"
+}
+
+lid_watchdog_status() {
+  echo "OCLP closed-lid battery sleep watchdog"
+  echo
+  echo "Installed files:"
+  [[ -x "$WATCHDOG_INSTALL_PATH" ]] && echo "  executable: installed" || echo "  executable: missing"
+  [[ -f "$WATCHDOG_PLIST_PATH" ]] && echo "  LaunchDaemon: installed" || echo "  LaunchDaemon: missing"
+  echo
+  echo "Current sensor/timer state:"
+  if [[ -x "$WATCHDOG_INSTALL_PATH" ]]; then
+    "$WATCHDOG_INSTALL_PATH" --check-once | sed 's/^/  /'
+  elif [[ -f "$WATCHDOG_SOURCE" ]]; then
+    /bin/zsh "$WATCHDOG_SOURCE" --check-once | sed 's/^/  /'
+  else
+    echo "  unavailable"
+  fi
+  echo
+  echo "LaunchDaemon state:"
+  /bin/launchctl print "system/$WATCHDOG_LABEL" 2>&1 | sed -n '1,35p' | sed 's/^/  /'
+
+  if [[ -r "$WATCHDOG_LOG_PATH" ]]; then
+    echo
+    echo "Recent watchdog log:"
+    tail -20 "$WATCHDOG_LOG_PATH" | sed 's/^/  /'
+  fi
+
+  if [[ -r "$WATCHDOG_ERROR_LOG_PATH" && -s "$WATCHDOG_ERROR_LOG_PATH" ]]; then
+    echo
+    echo "Recent watchdog errors:"
+    tail -20 "$WATCHDOG_ERROR_LOG_PATH" | sed 's/^/  /'
+  fi
+}
+
+remove_lid_watchdog() {
+  echo "Stopping and removing: $WATCHDOG_LABEL"
+  sudo /bin/launchctl bootout system "$WATCHDOG_PLIST_PATH" 2>/dev/null || true
+  sudo /bin/rm -f "$WATCHDOG_PLIST_PATH" "$WATCHDOG_INSTALL_PATH" "$WATCHDOG_STATE_PATH"
+  echo "Removed the watchdog executable, LaunchDaemon, and active timer state."
+  echo "Preserved diagnostic logs:"
+  echo "  $WATCHDOG_LOG_PATH"
+  echo "  $WATCHDOG_ERROR_LOG_PATH"
 }
 
 heading() {
@@ -469,8 +570,20 @@ run_report() {
   echo "Report copied to clipboard."
 }
 
-if [[ "$MODE" == "--ec-lid-diagnostic" ]]; then
-  run_ec_lid_diagnostic
-else
-  run_report
-fi
+case "$MODE" in
+  --ec-lid-diagnostic)
+    run_ec_lid_diagnostic
+    ;;
+  --install-lid-watchdog)
+    install_lid_watchdog
+    ;;
+  --lid-watchdog-status)
+    lid_watchdog_status
+    ;;
+  --remove-lid-watchdog)
+    remove_lid_watchdog
+    ;;
+  *)
+    run_report
+    ;;
+esac
